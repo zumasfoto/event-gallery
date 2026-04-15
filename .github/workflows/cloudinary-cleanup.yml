@@ -1,0 +1,114 @@
+name: Cloudinary cleanup (24h)
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup Cloudinary assets older than 24h (pb_gallery/)
+        env:
+          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+        run: |
+          python3 - <<'PY'
+          import os, sys, time, json, hashlib, urllib.parse, urllib.request, base64
+
+          cloud = os.environ.get("CLOUDINARY_CLOUD_NAME","").strip()
+          key = os.environ.get("CLOUDINARY_API_KEY","").strip()
+          secret = os.environ.get("CLOUDINARY_API_SECRET","").strip()
+
+          if not cloud or not key or not secret:
+            print("Missing Cloudinary secrets")
+            sys.exit(1)
+
+          PREFIX = "pb_gallery/"
+          MAX_AGE_SEC = 24 * 60 * 60
+          now = int(time.time())
+          cutoff = now - MAX_AGE_SEC
+
+          def basic_req(url, method="GET", data=None):
+            req = urllib.request.Request(url, data=data, method=method)
+            auth = base64.b64encode(f"{key}:{secret}".encode("utf-8")).decode("ascii")
+            req.add_header("Authorization", "Basic " + auth)
+            return req
+
+          def api_get(path, params):
+            base = f"https://api.cloudinary.com/v1_1/{cloud}/{path}"
+            q = urllib.parse.urlencode(params)
+            url = base + ("?" + q if q else "")
+            with urllib.request.urlopen(basic_req(url, "GET"), timeout=60) as r:
+              return json.loads(r.read().decode("utf-8"))
+
+          def sign(params):
+            items = [(k, str(v)) for k, v in params.items() if v is not None and v != ""]
+            items.sort(key=lambda x: x[0])
+            qs = "&".join([f"{k}={v}" for k, v in items])
+            return hashlib.sha1((qs + secret).encode("utf-8")).hexdigest()
+
+          def parse_created_at(created_at):
+            try:
+              t = time.strptime(created_at.split(".")[0], "%Y-%m-%dT%H:%M:%S")
+              return int(time.mktime(t))
+            except:
+              return None
+
+          def list_old(resource_type):
+            old = []
+            cursor = None
+            scanned = 0
+            while True:
+              params = {"type":"upload","prefix":PREFIX,"max_results":500}
+              if cursor: params["next_cursor"] = cursor
+              data = api_get(f"resources/{resource_type}/upload", params)
+              resources = data.get("resources", []) or []
+              cursor = data.get("next_cursor")
+              for r in resources:
+                scanned += 1
+                pid = r.get("public_id","")
+                ts = parse_created_at(r.get("created_at",""))
+                if pid and ts is not None and ts < cutoff:
+                  old.append(pid)
+              if not cursor: break
+            return old, scanned
+
+          def delete_batch(resource_type, public_ids):
+            ts = int(time.time())
+            signature = sign({
+              "public_ids": ",".join(public_ids),
+              "timestamp": ts,
+            })
+            body = urllib.parse.urlencode({
+              "api_key": key,
+              "timestamp": ts,
+              "signature": signature,
+              "public_ids": public_ids,
+            }, doseq=True).encode("utf-8")
+
+            url = f"https://api.cloudinary.com/v1_1/{cloud}/resources/{resource_type}/upload"
+            with urllib.request.urlopen(basic_req(url, "DELETE", body), timeout=120) as r:
+              return json.loads(r.read().decode("utf-8"))
+
+          def cleanup(resource_type):
+            old, scanned = list_old(resource_type)
+            print(f"[{resource_type}] scanned={scanned} to_delete={len(old)}")
+            BATCH = 100
+            deleted = 0
+            for i in range(0, len(old), BATCH):
+              batch = old[i:i+BATCH]
+              try:
+                out = delete_batch(resource_type, batch)
+                d = out.get("deleted", {}) or {}
+                deleted += sum(1 for v in d.values() if v == "deleted")
+                print(f"[{resource_type}] deleted batch {i//BATCH+1} size={len(batch)}")
+              except Exception as e:
+                print(f"[{resource_type}] delete batch failed:", e)
+            print(f"[{resource_type}] deleted_total={deleted}")
+
+          cleanup("image")
+          cleanup("raw")
+          PY
