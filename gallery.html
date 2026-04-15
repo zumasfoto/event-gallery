@@ -10,6 +10,7 @@
     .top { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
     .btn { border:0; border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer; }
     .btnPrimary { background:#3b82f6; color:#fff; }
+    .btnLink { background:#111a2e; border:1px solid #26314d; color:#93c5fd; text-decoration:none; display:inline-flex; align-items:center; }
     .muted { opacity:.8; font-size:14px; }
     .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
     .card { background:#111a2e; border:1px solid #26314d; border-radius:12px; overflow:hidden; }
@@ -25,8 +26,11 @@
     <div class="top">
       <button id="zipBtn" class="btn btnPrimary">Scarica Tutto (ZIP)</button>
       <div id="meta" class="muted">Caricamento...</div>
-      <div class="muted">CLICCA DOWNLOAD poi tieni premuto per scaricare e condividere.</div>
+      <div class="muted">Suggerimento: apri una foto e tieni premuto per scaricare o condividere.</div>
     </div>
+
+    <div id="links" class="top" style="margin-top:-6px"></div>
+
     <div id="grid" class="grid"></div>
   </div>
 
@@ -36,6 +40,14 @@
     const grid = document.getElementById('grid');
     const meta = document.getElementById('meta');
     const zipBtn = document.getElementById('zipBtn');
+    const linksWrap = document.getElementById('links');
+
+    function normUrl(u) {
+      const s = String(u || '').trim();
+      if (!s) return '';
+      if (/^https?:\/\//i.test(s)) return s;
+      return 'https://' + s.replace(/^\/+/, '');
+    }
 
     async function loadManifest() {
       if (!manifestUrl) throw new Error('manifestUrl mancante');
@@ -59,6 +71,29 @@
             <a href="${url}" download target="_blank" rel="noopener">Download</a>
           </div>`;
         grid.appendChild(card);
+      }
+    }
+
+    function renderLinks(m) {
+      const links = (m && typeof m === 'object' && m.links && typeof m.links === 'object') ? m.links : {};
+      const entries = [
+        ['Sito', normUrl(links.website)],
+        ['Instagram', normUrl(links.instagram)],
+        ['TikTok', normUrl(links.tiktok)],
+        ['Facebook', normUrl(links.facebook)],
+      ].filter(([,url]) => url);
+
+      linksWrap.innerHTML = '';
+      if (!entries.length) return;
+
+      for (const [label, url] of entries) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.className = 'btn btnLink';
+        a.textContent = label;
+        linksWrap.appendChild(a);
       }
     }
 
@@ -101,6 +136,8 @@
         render(items);
 
         meta.textContent = `${m.eventName || 'Evento'} • ${items.length} foto`;
+
+        renderLinks(m);
 
         zipBtn.addEventListener('click', () => downloadZip(items, m.sessionId || 'sessione'));
       } catch {
