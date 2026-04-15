@@ -23,10 +23,12 @@
 <body>
   <div class="wrap">
     <div class="top">
-  <button id="zipBtn" class="btn btnPrimary">Scarica Tutto (ZIP)</button>
-  <div id="meta" class="muted">Caricamento...</div>
-  <div class="muted">Suggerimento: apri una foto e tieni premuto per scaricare o condividere.</div>
-</div>
+      <button id="zipBtn" class="btn btnPrimary">Scarica Tutto (ZIP)</button>
+      <div id="meta" class="muted">Caricamento...</div>
+      <div class="muted">Suggerimento: apri una foto e tieni premuto per scaricare o condividere.</div>
+    </div>
+    <div id="grid" class="grid"></div>
+  </div>
 
   <script>
     const qs = new URLSearchParams(location.search);
@@ -64,6 +66,7 @@
       const zip = new JSZip();
       const folder = zip.folder((sessionId || 'sessione').replace(/[^\w-]+/g,'_'));
       let idx = 1;
+
       for (const it of items) {
         const url = it?.url || '';
         if (!url) continue;
@@ -74,6 +77,7 @@
         folder.file(name, blob);
         idx++;
       }
+
       const out = await zip.generateAsync({ type:'blob' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(out);
@@ -86,14 +90,18 @@
       try {
         const m = await loadManifest();
         const now = Date.now();
+
         if (m.expiresAt && now > Number(m.expiresAt)) {
           meta.textContent = 'Link scaduto';
           zipBtn.disabled = true;
           return;
         }
+
         const items = Array.isArray(m.items) ? m.items : [];
         render(items);
+
         meta.textContent = `${m.eventName || 'Evento'} • ${items.length} foto`;
+
         zipBtn.addEventListener('click', () => downloadZip(items, m.sessionId || 'sessione'));
       } catch {
         meta.textContent = 'Errore caricamento galleria';
