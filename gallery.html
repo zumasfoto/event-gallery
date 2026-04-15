@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Galleria Sessione</title>
+  <style>
+    body { margin:0; font-family:system-ui,Arial,sans-serif; background:#0b1220; color:#fff; }
+    .wrap { max-width:1100px; margin:0 auto; padding:16px; }
+    .top { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+    .btn { border:0; border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer; }
+    .btnPrimary { background:#3b82f6; color:#fff; }
+    .muted { opacity:.8; font-size:14px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
+    .card { background:#111a2e; border:1px solid #26314d; border-radius:12px; overflow:hidden; }
+    .card img { width:100%; height:220px; object-fit:cover; display:block; background:#000; }
+    .row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px; }
+    .tag { font-size:12px; opacity:.85; }
+    a { color:#93c5fd; text-decoration:none; font-weight:700; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <button id="zipBtn" class="btn btnPrimary">Scarica Tutto (ZIP)</button>
+      <div id="meta" class="muted">Caricamento...</div>
+    </div>
+    <div id="grid" class="grid"></div>
+  </div>
+
+  <script>
+    const qs = new URLSearchParams(location.search);
+    const manifestUrl = qs.get('manifestUrl') || '';
+    const grid = document.getElementById('grid');
+    const meta = document.getElementById('meta');
+    const zipBtn = document.getElementById('zipBtn');
+
+    async function loadManifest() {
+      if (!manifestUrl) throw new Error('manifestUrl mancante');
+      const res = await fetch(manifestUrl);
+      return await res.json();
+    }
+
+    function render(items) {
+      grid.innerHTML = '';
+      for (const it of items) {
+        const url = it?.url || '';
+        if (!url) continue;
+        const type = it?.type || 'foto';
+        const label = it?.label || type;
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <img src="${url}" alt="">
+          <div class="row">
+            <div class="tag">${label}</div>
+            <a href="${url}" download target="_blank" rel="noopener">Download</a>
+          </div>`;
+        grid.appendChild(card);
+      }
+    }
+
+    async function downloadZip(items, sessionId) {
+      const zip = new JSZip();
+      const folder = zip.folder((sessionId || 'sessione').replace(/[^\w-]+/g,'_'));
+      let idx = 1;
+      for (const it of items) {
+        const url = it?.url || '';
+        if (!url) continue;
+        const type = String(it?.type || 'foto').replace(/[^\w-]+/g,'_');
+        const ext = url.includes('.png') ? 'png' : (url.includes('.jpg') || url.includes('.jpeg') ? 'jpg' : 'jpg');
+        const name = `${String(idx).padStart(2,'0')}_${type}.${ext}`;
+        const blob = await fetch(url).then(r => r.blob());
+        folder.file(name, blob);
+        idx++;
+      }
+      const out = await zip.generateAsync({ type:'blob' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(out);
+      a.download = `${(sessionId || 'sessione').replace(/[^\w-]+/g,'_')}.zip`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    (async () => {
+      try {
+        const m = await loadManifest();
+        const now = Date.now();
+        if (m.expiresAt && now > Number(m.expiresAt)) {
+          meta.textContent = 'Link scaduto';
+          zipBtn.disabled = true;
+          return;
+        }
+        const items = Array.isArray(m.items) ? m.items : [];
+        render(items);
+        meta.textContent = `${m.eventName || 'Evento'} • ${items.length} foto`;
+        zipBtn.addEventListener('click', () => downloadZip(items, m.sessionId || 'sessione'));
+      } catch {
+        meta.textContent = 'Errore caricamento galleria';
+        zipBtn.disabled = true;
+      }
+    })();
+  </script>
+</body>
+</html>
