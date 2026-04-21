@@ -4,6 +4,20 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Galleria Sessione</title>
+
+  <script>
+    (function () {
+      try {
+        const p = new URLSearchParams(location.search);
+        const layoutRaw = String(p.get('layout') || '').trim().toLowerCase();
+        const isVertical = layoutRaw === 'vertical' || layoutRaw === 'verticale' || layoutRaw === 'v';
+        if (isVertical) document.documentElement.classList.add('layout-vertical');
+        else document.documentElement.classList.remove('layout-vertical');
+      } catch {
+      }
+    })();
+  </script>
+
   <style>
     body { margin:0; font-family:system-ui,Arial,sans-serif; background:#0b1220; color:#fff; }
     .wrap { max-width:1100px; margin:0 auto; padding:16px; }
@@ -14,13 +28,18 @@
     .muted { opacity:.8; font-size:14px; }
     .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
     .card { background:#111a2e; border:1px solid #26314d; border-radius:12px; overflow:hidden; }
-    .card img { width:100%; height:220px; object-fit:cover; display:block; background:#000; }
+    .card img { width:100%; height:auto; aspect-ratio:3 / 2; object-fit:cover; display:block; background:#000; }
     .row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px; }
     .tag { font-size:12px; opacity:.85; }
     a { color:#93c5fd; text-decoration:none; font-weight:700; }
+
+    html.layout-vertical .grid { grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); }
+    html.layout-vertical .card img { aspect-ratio:2 / 3; }
   </style>
+
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 </head>
+
 <body>
   <div class="wrap">
     <div class="top">
@@ -51,7 +70,7 @@
 
     async function loadManifest() {
       if (!manifestUrl) throw new Error('manifestUrl mancante');
-      const res = await fetch(manifestUrl);
+      const res = await fetch(manifestUrl, { cache: 'no-store' });
       return await res.json();
     }
 
@@ -62,6 +81,7 @@
         if (!url) continue;
         const type = it?.type || 'foto';
         const label = it?.label || type;
+
         const card = document.createElement('div');
         card.className = 'card';
         card.innerHTML = `
@@ -81,7 +101,7 @@
         ['Instagram', normUrl(links.instagram)],
         ['TikTok', normUrl(links.tiktok)],
         ['Facebook', normUrl(links.facebook)],
-      ].filter(([,url]) => url);
+      ].filter(([, url]) => url);
 
       linksWrap.innerHTML = '';
       if (!entries.length) return;
@@ -99,24 +119,24 @@
 
     async function downloadZip(items, sessionId) {
       const zip = new JSZip();
-      const folder = zip.folder((sessionId || 'sessione').replace(/[^\w-]+/g,'_'));
+      const folder = zip.folder((sessionId || 'sessione').replace(/[^\w-]+/g, '_'));
       let idx = 1;
 
       for (const it of items) {
         const url = it?.url || '';
         if (!url) continue;
-        const type = String(it?.type || 'foto').replace(/[^\w-]+/g,'_');
+        const type = String(it?.type || 'foto').replace(/[^\w-]+/g, '_');
         const ext = url.includes('.png') ? 'png' : (url.includes('.jpg') || url.includes('.jpeg') ? 'jpg' : 'jpg');
-        const name = `${String(idx).padStart(2,'0')}_${type}.${ext}`;
-        const blob = await fetch(url).then(r => r.blob());
+        const name = `${String(idx).padStart(2, '0')}_${type}.${ext}`;
+        const blob = await fetch(url, { cache: 'no-store' }).then(r => r.blob());
         folder.file(name, blob);
         idx++;
       }
 
-      const out = await zip.generateAsync({ type:'blob' });
+      const out = await zip.generateAsync({ type: 'blob' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(out);
-      a.download = `${(sessionId || 'sessione').replace(/[^\w-]+/g,'_')}.zip`;
+      a.download = `${(sessionId || 'sessione').replace(/[^\w-]+/g, '_')}.zip`;
       a.click();
       URL.revokeObjectURL(a.href);
     }
