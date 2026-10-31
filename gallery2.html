@@ -88,8 +88,17 @@
         const card = document.createElement('div');
         card.className = 'card';
 
+        // Copertina del video: primo fotogramma (con la cornice gia' applicata),
+        // cosi' la miniatura si vede subito senza restare nera in attesa del play.
+        let poster = '';
+        if (isVideo && url.indexOf('/video/upload/') >= 0 && /\.mp4(\?|$)/i.test(url)) {
+          poster = url
+            .replace('/video/upload/', '/video/upload/so_0/')
+            .replace(/\.mp4(\?|$)/i, '.jpg');
+        }
+
         const media = isVideo
-          ? `<video src="${url}" controls playsinline preload="metadata"></video>`
+          ? `<video src="${url}"${poster ? ` poster="${poster}"` : ''} controls playsinline preload="metadata"></video>`
           : `<img src="${url}" alt="">`;
 
         card.innerHTML = `
