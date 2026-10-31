@@ -28,13 +28,13 @@
     .muted { opacity:.8; font-size:14px; }
     .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
     .card { background:#111a2e; border:1px solid #26314d; border-radius:12px; overflow:hidden; }
-    .card img { width:100%; height:auto; aspect-ratio:3 / 2; object-fit:cover; display:block; background:#000; }
+    .card img, .card video { width:100%; height:auto; aspect-ratio:3 / 2; object-fit:cover; display:block; background:#000; }
     .row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px; }
     .tag { font-size:12px; opacity:.85; }
     a { color:#93c5fd; text-decoration:none; font-weight:700; }
 
     html.layout-vertical .grid { grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); }
-    html.layout-vertical .card img { aspect-ratio:2 / 3; }
+    html.layout-vertical .card img, html.layout-vertical .card video { aspect-ratio:2 / 3; }
   </style>
 
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -74,18 +74,26 @@
       return await res.json();
     }
 
+    // I video vanno mostrati con un lettore <video>: con <img> non si vedevano
     function render(items) {
       grid.innerHTML = '';
       for (const it of items) {
         const url = it?.url || '';
         if (!url) continue;
-        const type = it?.type || 'foto';
-        const label = it?.label || type;
+        const rawType = it?.type || 'foto';
+        const type = String(rawType).toLowerCase();
+        const label = it?.label || rawType;
+        const isVideo = type.indexOf('video') >= 0 || /\.(mp4|3gp|mov|mkv|avi|webm)(\?|$)/i.test(url);
 
         const card = document.createElement('div');
         card.className = 'card';
+
+        const media = isVideo
+          ? `<video src="${url}" controls playsinline preload="metadata"></video>`
+          : `<img src="${url}" alt="">`;
+
         card.innerHTML = `
-          <img src="${url}" alt="">
+          ${media}
           <div class="row">
             <div class="tag">${label}</div>
             <a href="${url}" download target="_blank" rel="noopener">Download</a>
@@ -125,9 +133,12 @@
       for (const it of items) {
         const url = it?.url || '';
         if (!url) continue;
-        const type = String(it?.type || 'foto').replace(/[^\w-]+/g, '_');
-        const ext = url.includes('.png') ? 'png' : (url.includes('.jpg') || url.includes('.jpeg') ? 'jpg' : 'jpg');
-        const name = `${String(idx).padStart(2, '0')}_${type}.${ext}`;
+        const type = String(it?.type || 'foto').toLowerCase();
+        const isVideo = type.indexOf('video') >= 0 || /\.(mp4|3gp|mov|mkv|avi|webm)(\?|$)/i.test(url);
+        const ext = isVideo
+          ? 'mp4'
+          : (url.includes('.png') ? 'png' : (url.includes('.webp') ? 'webp' : 'jpg'));
+        const name = `${String(idx).padStart(2, '0')}_${type.replace(/[^\w-]+/g, '_')}.${ext}`;
         const blob = await fetch(url, { cache: 'no-store' }).then(r => r.blob());
         folder.file(name, blob);
         idx++;
@@ -155,7 +166,7 @@
         const items = Array.isArray(m.items) ? m.items : [];
         render(items);
 
-        meta.textContent = `${m.eventName || 'Evento'} • ${items.length} foto`;
+        meta.textContent = `${m.eventName || 'Evento'} • ${items.length} elementi`;
 
         renderLinks(m);
 
